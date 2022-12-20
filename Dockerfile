@@ -22,7 +22,7 @@ FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build-env
 WORKDIR ./
 
 # Copy csproj and restore as distinct layers
-COPY TreeMe.sln .
+COPY BlazorServer.sln .
 COPY BlazorServer/BackEnd.csproj ./BlazorServer/BackEnd.csproj
 RUN dotnet restore
 
