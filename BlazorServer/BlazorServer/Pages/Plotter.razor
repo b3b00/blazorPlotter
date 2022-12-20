@@ -1,0 +1,404 @@
+@page "/plotter"
+@using expressionparser.model
+@using blazorserver.Client.Formula
+@using Microsoft.Extensions.Logging
+@using System.Text
+@using blazorserver
+@using blazorserver.Client
+@using MatBlazor
+@inject ParserService _parser
+@inject ILogger<Plotter> _logger
+
+<h1>Plotter</h1>
+
+<div class="mb-6 row">
+    <div class="col-sm-4">
+        <MatTextField @bind-value="@Formula" TValue="string" label="formula" @onkeydown="@(async args => await OnKeyDown(args))"></MatTextField>
+    </div>
+    <div class="col-sm-1">
+        <MatButton Icon="add" OnClick="AddFormula" label="Add"></MatButton>
+    </div>
+    <div class="col-sm-1">
+        <MatButton Icon="clear" OnClick="Clear" label="clear"></MatButton>
+    </div>
+</div>
+
+<MatSnackbar @bind-IsOpen="@snackOpened" Leading="true">
+    <MatSnackbarContent>@snackMessage.</MatSnackbarContent>
+    <MatSnackbarActions>
+        <MatButton Raised="true" OnClick="@(() => { snackOpened = false; })">OK</MatButton>
+    </MatSnackbarActions>
+</MatSnackbar>
+
+<div style="display:flex;flex-direction: row;flex-wrap: wrap">
+    <div >
+    </div>
+    <div>
+        @if (Formulas != null)
+        {
+            <MatChipSet>
+                @foreach (var function in Formulas)
+                {
+                    var c = "color:" + function.Value.color;
+                    <MatChip Style=@c class="mt-1" Label=@function.Key TrailingIcon="clear" TrailingIconClick="OnRemoveFormula"></MatChip>
+                }
+            </MatChipSet>
+        }
+    </div>
+</div>
+<div>
+
+        <MatSlideToggle Label="Show grid" TValue="bool" Value="@ShowGrid" ValueChanged="@ToggleGrid"></MatSlideToggle>
+
+        <MatSlider TValue="double" ValueMin="0" Value="@Zoom" ValueMax="200" ValueChanged="@(async args => { Zoom = args; await Redraw(); })" Id="Zoomy"></MatSlider>
+    @if (Formulas != null && Formulas.Any())
+    {
+        <MatButton @onclick="DownloadSvg">Download image...</MatButton>
+    }
+    <svg width="@(Width)" height="@(Height)" xmlns="http://www.w3.org/2000/svg" style="border: 1px solid lightgray">
+        @((MarkupString)Grid)
+        @((MarkupString)Graphs)
+    </svg>
+</div>
+
+@code {
+
+    private bool snackOpened;
+
+    private string snackMessage;
+
+    private static Dictionary<string, (Func<double, double?> function, string color)> Formulas = new();
+
+    private string Formula;
+
+    private bool isOnline;
+
+    private int Width = 750;
+
+    private int Height = 500;
+
+    private string Svg;
+
+    private string Grid;
+
+    private string Graphs;
+
+    private bool ShowGrid = true;
+
+    private int ColorIndex = 0;
+    
+    public double Zoom { get; set; } = 100;
+
+    public double OtherZoom
+    {
+        get
+        {
+            if (Zoom < 100)
+            {
+                return Zoom / 10;
+            }
+            return Zoom;
+        }
+    }
+    
+    private static string[] Colors = new[]
+    {
+        "blue",
+        "red",
+        "green",
+        "fuchsia",
+        "coral",
+        "cyan",
+        "darkgray",
+        "black",
+        "deeppink"
+    };
+
+    private async Task Clear()
+    {
+        Formulas.Clear();
+        await Redraw();
+    }
+
+    private async Task OnRemoveFormula(MatChip item)
+    {
+        await RemoveFormula(item.Label);
+    }
+
+    private async Task ToggleGrid()
+    {
+        ShowGrid = !ShowGrid;
+        await Redraw();
+        StateHasChanged();
+    }
+
+    private async Task RemoveFormula(string formula)
+    {
+        if (Formulas.ContainsKey(formula))
+        {
+            Formulas.Remove(formula);
+            await SaveFormulas();
+        }
+        await Redraw();
+    }
+
+    private async Task AddFormula()
+    {
+        try
+        {
+            
+            if (!string.IsNullOrEmpty(Formula))
+            {
+                var ast = _parser.Parse(Formula);
+                if (ast.IsOk)
+                {
+                    Func<double, double?> function = (x) =>
+                    {
+                        var context = new ExpressionContext(new Dictionary<string, double>() { { "x", x } });
+                        return ast.Result.Evaluate(context);
+                    };
+
+                    ColorIndex = ColorIndex > Colors.Length - 1 ? 0 : ColorIndex;
+                    Formulas[Formula] = (function,Colors[ColorIndex]);
+                    await SaveFormulas();
+                    await Draw(Colors[ColorIndex], function, Formula);
+                    ColorIndex = ColorIndex >= Colors.Length - 1 ? 0 : ColorIndex + 1;
+                }
+                else
+                {
+                    snackOpened = true;
+                    var errors = string.Join("\n", ast.Errors.Select(x => x.ErrorMessage));
+                    snackMessage = errors;
+                    snackOpened = true;
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            snackMessage = e.Message;
+            snackOpened = true;
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+        {
+            await AddFormula();
+        }
+    }
+
+    protected async Task Redraw()
+    {
+        if (Zoom <= 0)
+        {
+            Zoom = 100;
+        }
+        
+        var formulasList = string.Join(", ", Formulas.Keys);
+        Grid = "";
+        Graphs = "";
+        await ClearCanvas();
+        if (ShowGrid)
+        {
+            await DrawGrid();
+        }
+        ColorIndex = 0;
+        foreach (var formula in Formulas)
+        {
+            await Draw(formula.Value.color, formula.Value.function, formula.Key, OtherZoom);
+        }
+    }
+
+    private async Task ClearCanvas()
+    {
+        Svg = "";
+        if (ShowGrid)
+        {
+            await DrawGrid();
+        }
+    }
+
+    private void RefreshMe()
+    {
+        StateHasChanged();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+    }
+
+    private async Task DownloadSvg()
+    {
+        
+        byte[] file = System.Text.Encoding.UTF8.GetBytes($@"
+<svg width=""@(Width)"" height=""{Height}"" xmlns=""http://www.w3.org/2000/svg"" style=""border: 1px solid lightgray"">
+{(ShowGrid ? Grid : "")}
+{Graphs}
+</svg>");
+
+        string fileName = "image.svg";
+        string contentType = "image/svg+xml";
+
+    // TODO : !?! 
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (ShowGrid)
+        {
+            await DrawGrid();
+        }
+
+        if (firstRender)
+        {
+            await ReloadFormulas();
+            await Redraw();
+            StateHasChanged();
+        }
+    }
+
+
+    private async Task DrawGrid()
+    {
+        
+        double toX = OtherZoom < 0 ? 10d : OtherZoom;
+        double toY = OtherZoom < 0 ? 6d : OtherZoom * 6d / 10d;
+        
+        Referential range = new Referential(-toX, -toY, toX, toY);
+        Referential display = new Referential(0, 0, Width, Height);
+
+        var ordinateBottom = range.TranslateTo(0, -toY, display);
+        var ordinateTop = range.TranslateTo(0, toY, display);
+        var abscissaLeft = range.TranslateTo(-toX, 0, display);
+        var abscissaRight = range.TranslateTo(toX, 0, display);
+
+        Grid += SvgLine(ordinateBottom, ordinateTop, "black");
+        Grid += SvgLine(abscissaLeft, abscissaRight, color: "black");
+
+        for (double x = range.FromX + 1; x < range.ToX; x+=range.ToX/10f)
+        {
+            if (x == 0.0)
+            {
+                continue;
+            }
+            var vertB = range.TranslateTo(x, -toY, display);
+            var vertT = range.TranslateTo(x, toY, display);
+            Grid += SvgLine(vertB, vertT, "lightgray", "5 , 15");
+        }
+
+        for (double y = range.FromY + 1; y < range.ToY; y+=range.ToY/6f)
+        {
+            if (y == 0.0)
+            {
+                continue;
+            }
+            var horizL = range.TranslateTo(-toX, y, display);
+            var horizR = range.TranslateTo(toX, y, display);
+            Grid += SvgLine(horizL, horizR, "lightgray", "5, 15");
+        }
+    }
+
+    protected async Task Draw(string color, Func<double, double?> function, string formula, double zoom=-1)
+    {
+        var formulaGraph = new StringBuilder();
+
+        var svgPlotter = new PlottingService(async (double x, double y) =>
+        {
+            var xx = x.ToString("F").Replace(",", ".");
+            var yy = y.ToString("F").Replace(",", ".");
+        },
+            async (double x1, double y1, double x2, double y2) => { formulaGraph.AppendLine(SvgLine(x1, y1, x2, y2, color)); });
+
+        await svgPlotter.Draw(function, Width, Height, zoom);
+
+        Graphs += "\n" + formulaGraph.ToString();
+    }
+
+    private async Task SaveFormulas()
+    {
+        var formulasDefinitions = Formulas.Keys.ToList();
+    }
+
+    private async Task ReloadFormulas(string[] formulas = null)
+    {
+        Formulas.Clear();
+        string[] formulasDefinitions =  { };
+        if (formulas == null)
+        {
+        }
+        else
+        {
+            formulasDefinitions = formulas;
+        }
+        if (formulasDefinitions.Any())
+        {
+            foreach (var formula in formulasDefinitions)
+            {
+                if (!string.IsNullOrEmpty(formula))
+                {
+                    var ast = _parser.Parse(formula);
+                    if (ast.IsOk)
+                    {
+                        Func<double, double?> function = (x) =>
+                        {
+                            var context = new ExpressionContext(new Dictionary<string, double>() { { "x", x } });
+                            return ast.Result.Evaluate(context);
+                        };
+                        Formulas[formula] = (function, Colors[ColorIndex]);
+                        ColorIndex++;
+                        ColorIndex = ColorIndex >= Colors.Length ? 0 : ColorIndex;
+                    }
+                }
+            }
+        }
+        else
+        {
+            Formulas.Clear();
+        }
+    }
+
+    public static string ToEnDecimal(double d)
+    {
+        return d.ToString("F").Replace(",", ".");
+    }
+
+    public string SvgLine(Translation start, Translation end, string color, string dash = null)
+    {
+        return SvgLine(start.X, start.Y, end.X, end.Y, color, dash);
+    }
+
+    public string SvgLine(double x1, double y1, double x2, double y2, string color, string dash = null)
+    {
+        var line = $@"<line x1=""{ToEnDecimal(x1)}"" y1=""{ToEnDecimal(y1)}"" x2=""{ToEnDecimal(x2)}"" y2=""{ToEnDecimal(y2)}"" style=""stroke:{color}"" ";
+        if (dash != null)
+        {
+            line += $@"stroke-dasharray=""{dash}""";
+        }
+        line += " />\n";
+        return line;
+    }
+
+    public string SvgText(double x, double y, string text, string color = null, int? size = null)
+    {
+        var txt = $@"<text x=""{ToEnDecimal(x)}"" y=""{ToEnDecimal(y)}"" font-size=""4"" fill=""{color}""";
+        if (size.HasValue)
+        {
+            txt += $@"font-size=""{size.Value}""";
+        }
+        txt += $" >{text}</text>";
+        return txt;
+    }
+
+    public string SvgText(Translation position, string text, string color, int? size = null)
+    {
+        return SvgText(position.X, position.Y, text, color, size);
+    }
+
+
+
+    
+
+}
