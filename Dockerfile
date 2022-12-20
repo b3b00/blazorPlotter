@@ -23,12 +23,12 @@ WORKDIR ./
 
 # Copy csproj and restore as distinct layers
 COPY BlazorServer.sln .
-COPY BlazorServer/BackEnd.csproj ./BlazorServer/BackEnd.csproj
+COPY BlazorServer/BlazorServer.csproj ./BlazorServer/BlazorServer.csproj
 RUN dotnet restore
 
 # Copy everything else and build
 COPY . .
-RUN dotnet publish --no-restore -c Release -o out ./TreeMeX
+RUN dotnet publish --no-restore -c Release -o out ./BlazorServer
 
 # Build runtime image
 FROM mcr.microsoft.com/dotnet/aspnet:6.0
