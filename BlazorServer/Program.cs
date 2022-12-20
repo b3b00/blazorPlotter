@@ -30,4 +30,6 @@ app.UseRouting();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
-app.Run();
+var port = Environment.GetEnvironmentVariable("PORT");
+Console.WriteLine("DendrOnline is listening to http://*:" + port);
+app.Run("http://*:" + port);
