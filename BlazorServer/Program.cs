@@ -30,6 +30,12 @@ app.UseRouting();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
+app.MapGet("/health", async context =>
+{
+    context.Response.StatusCode = 200;
+    await context.Response.WriteAsync("OK");
+});
+
 var port = Environment.GetEnvironmentVariable("PORT");
 Console.WriteLine("plotter blazor server is listening to http://*:" + port);
 app.Run("http://*:" + port);
