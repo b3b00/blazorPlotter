@@ -31,5 +31,5 @@ app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
 var port = Environment.GetEnvironmentVariable("PORT");
-Console.WriteLine("DendrOnline is listening to http://*:" + port);
+Console.WriteLine("plotter blazor server is listening to http://*:" + port);
 app.Run("http://*:" + port);
