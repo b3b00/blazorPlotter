@@ -176,7 +176,7 @@
                     ColorIndex = ColorIndex > Colors.Length - 1 ? 0 : ColorIndex;
                     Formulas[Formula] = (function,Colors[ColorIndex]);
                     await SaveFormulas();
-                    await Draw(Colors[ColorIndex], function, Formula);
+                    await Draw(Formula, Colors[ColorIndex], function, Formula);
                     ColorIndex = ColorIndex >= Colors.Length - 1 ? 0 : ColorIndex + 1;
                 }
                 else
