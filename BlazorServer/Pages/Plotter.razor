@@ -1,13 +1,13 @@
 @page "/plotter"
 @using expressionparser.model
 @using blazorserver.Client.Formula
-@using Microsoft.Extensions.Logging
 @using System.Text
+@using Blazor.DownloadFileFast.Interfaces
 @using blazorserver
 @using blazorserver.Client
 @using MatBlazor
-@inject ParserService _parser
-@inject ILogger<Plotter> _logger
+@inject ParserService _parser 
+@inject IBlazorDownloadFileService BlazorDownloadFileService 
 
 <h1>Plotter</h1>
 
@@ -86,8 +86,23 @@
     private bool ShowGrid = true;
 
     private int ColorIndex = 0;
-    
-    public double Zoom { get; set; } = 100;
+
+    private double _zoom = 100d;
+
+    public double Zoom
+    {
+        get
+        {
+            return _zoom; 
+            
+        }
+        set
+        {
+            _zoom = value;
+        }
+    }
+
+
 
     public double OtherZoom
     {
@@ -196,7 +211,6 @@
             Zoom = 100;
         }
         
-        var formulasList = string.Join(", ", Formulas.Keys);
         Grid = "";
         Graphs = "";
         await ClearCanvas();
@@ -207,7 +221,7 @@
         ColorIndex = 0;
         foreach (var formula in Formulas)
         {
-            await Draw(formula.Value.color, formula.Value.function, formula.Key, OtherZoom);
+            await Draw(formula.Key,formula.Value.color, formula.Value.function, formula.Key, OtherZoom);
         }
     }
 
@@ -233,7 +247,7 @@
     private async Task DownloadSvg()
     {
         
-        byte[] file = System.Text.Encoding.UTF8.GetBytes($@"
+        byte[] fileContent = System.Text.Encoding.UTF8.GetBytes($@"
 <svg width=""@(Width)"" height=""{Height}"" xmlns=""http://www.w3.org/2000/svg"" style=""border: 1px solid lightgray"">
 {(ShowGrid ? Grid : "")}
 {Graphs}
@@ -241,6 +255,8 @@
 
         string fileName = "image.svg";
         string contentType = "image/svg+xml";
+
+        await BlazorDownloadFileService.DownloadFileAsync(fileName, fileContent, contentType);
 
     // TODO : !?! 
     }
@@ -277,8 +293,9 @@
 
         Grid += SvgLine(ordinateBottom, ordinateTop, "black");
         Grid += SvgLine(abscissaLeft, abscissaRight, color: "black");
-
-        for (double x = range.FromX + 1; x < range.ToX; x+=range.ToX/10f)
+       
+        
+        for (double x = range.FromX + 1; x < range.ToX; x+=range.ToX/10d)
         {
             if (x == 0.0)
             {
@@ -289,7 +306,7 @@
             Grid += SvgLine(vertB, vertT, "lightgray", "5 , 15");
         }
 
-        for (double y = range.FromY + 1; y < range.ToY; y+=range.ToY/6f)
+        for (double y = range.FromY + 1; y < range.ToY; y+=range.ToY/6d)
         {
             if (y == 0.0)
             {
@@ -301,7 +318,7 @@
         }
     }
 
-    protected async Task Draw(string color, Func<double, double?> function, string formula, double zoom=-1)
+    protected async Task Draw(string functionDefinition, string color, Func<double, double?> function, string formula, double zoom=-1)
     {
         var formulaGraph = new StringBuilder();
 
@@ -312,7 +329,7 @@
         },
             async (double x1, double y1, double x2, double y2) => { formulaGraph.AppendLine(SvgLine(x1, y1, x2, y2, color)); });
 
-        await svgPlotter.Draw(function, Width, Height, zoom);
+        await svgPlotter.Draw(functionDefinition, function, Width, Height, zoom);
 
         Graphs += "\n" + formulaGraph.ToString();
     }

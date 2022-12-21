@@ -16,8 +16,9 @@ namespace blazorserver.Client
             MoveTo = moveTo;
         }
         
-        public async Task Draw(Func<double, double?> function, long width, long height, double zoom = -1)
+        public async Task Draw(string functionDefinition, Func<double, double?> function, long width, long height, double zoom = -1)
         {
+            Console.WriteLine($"drawing {functionDefinition} with zoom {zoom}");
             double toX = zoom < 0 ? 10d : zoom;
             double toy = zoom < 0 ? 6d: zoom * 6d / 10d;
                 

@@ -1,6 +1,4 @@
 using blazorserver.Client.Formula;
-using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Web;
 using BlazorServer.Data;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,6 +8,7 @@ builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddSingleton<WeatherForecastService>();
 builder.Services.AddSingleton<ParserService>();
+builder.Services.AddBlazorDownloadFile(lifetime : ServiceLifetime.Scoped);
 
 var app = builder.Build();
 
